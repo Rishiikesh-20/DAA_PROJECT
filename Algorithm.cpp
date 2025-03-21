@@ -7,11 +7,9 @@
 
 using namespace std;
 
-// Structure to represent the state of all lights
+// Structure to represent the state of all lights (unchanged)
 struct LightState {
     vector<int> colors; // 0=R, 1=G, 2=B
-    
-    // Custom hash function for the light state
     size_t hash() const {
         size_t h = 0;
         for (int color : colors) {
@@ -19,111 +17,193 @@ struct LightState {
         }
         return h;
     }
-    
-    // Equality operator for light state
     bool operator==(const LightState& other) const {
         return colors == other.colors;
     }
 };
 
-// Custom hash function for unordered_map
 struct LightStateHash {
     size_t operator()(const LightState& state) const {
         return state.hash();
     }
 };
 
-// Structure to represent a search state
-struct State {
-    LightState lights;
-    vector<int> buttonPressCount;
-    int totalPresses;
-    
-    State(const LightState& l, const vector<int>& bpc, int tp) 
-        : lights(l), buttonPressCount(bpc), totalPresses(tp) {}
-};
+// Arithmetic modulo 3 helpers
+inline int mod3(int x) { return ((x % 3) + 3) % 3; }
+inline int add_mod3(int a, int b) { return mod3(a + b); }
+inline int sub_mod3(int a, int b) { return mod3(a - b); }
+inline int mul_mod3(int a, int b) { return mod3(a * b); }
+int inv_mod3(int a) { // Multiplicative inverse in Z_3
+    if (a == 1) return 1;
+    if (a == 2) return 2; // 2 * 2 = 4 ≡ 1 mod 3
+    return 0; // 0 has no inverse, but we won't need it
+}
 
-// Function to solve the Limited Button Presses problem to make all lights a specific color
-pair<bool, vector<int>> solveAllLightsToColor(const string& lights, 
-                                            const vector<vector<int>>& buttons, 
-                                            const vector<int>& maxPresses,
-                                            char targetColor) {
-    int l = lights.size();
-    int b = buttons.size();
-    
-    // Target color as integer (0=R, 1=G, 2=B)
-    int targetColorVal;
-    if (targetColor == 'R') targetColorVal = 0;
-    else if (targetColor == 'G') targetColorVal = 1;
-    else targetColorVal = 2; // 'B'
-    
-    // Convert lights to numbers: R=0, G=1, B=2
-    LightState initialState;
-    initialState.colors.resize(l);
-    for (int i = 0; i < l; ++i) {
-        if (lights[i] == 'R') {
-            initialState.colors[i] = 0;
-        } else if (lights[i] == 'G') {
-            initialState.colors[i] = 1;
-        } else { // 'B'
-            initialState.colors[i] = 2;
-        }
-    }
-    
-    // BFS to find minimum button presses
-    queue<State> q;
-    unordered_map<LightState, vector<int>, LightStateHash> visited;
-    
-    vector<int> initialButtonPresses(b, 0);
-    q.push(State(initialState, initialButtonPresses, 0));
-    visited[initialState] = initialButtonPresses;
-    
-    while (!q.empty()) {
-        State current = q.front();
-        q.pop();
-        
-        // Check if all lights are the target color
-        bool allTarget = true;
-        for (int color : current.lights.colors) {
-            if (color != targetColorVal) {
-                allTarget = false;
+// Gaussian elimination over Z_3
+vector<vector<int>> gaussian_elimination(vector<vector<int>> A, int l, int b) {
+    vector<vector<int>> aug = A; // Copy A augmented with b (last column)
+    int rank = 0;
+    for (int col = 0; col < b && rank < l; ++col) {
+        // Find pivot
+        int pivot = -1;
+        for (int i = rank; i < l; ++i) {
+            if (aug[i][col] != 0) {
+                pivot = i;
                 break;
             }
         }
-        
-        if (allTarget) {
-            return {true, current.buttonPressCount};
-        }
-        
-        // Try pressing each button once more
-        for (int i = 0; i < b; ++i) {
-            if (current.buttonPressCount[i] < maxPresses[i]) {
-                // Create new state after pressing button i
-                LightState newLights = current.lights;
-                for (int lightIdx : buttons[i]) {
-                    int idx = lightIdx - 1; // Convert to 0-indexed
-                    // Button press cycles color: R->G->B->R (0->1->2->0)
-                    newLights.colors[idx] = (newLights.colors[idx] + 1) % 3;
+        if (pivot == -1) continue; // No pivot, move to next column
+
+        // Swap rows
+        if (pivot != rank) swap(aug[pivot], aug[rank]);
+
+        // Eliminate below pivot
+        int inv = inv_mod3(aug[rank][col]);
+        for (int i = rank + 1; i < l; ++i) {
+            if (aug[i][col] != 0) {
+                int factor = mul_mod3(aug[i][col], inv);
+                for (int j = col; j <= b; ++j) {
+                    aug[i][j] = sub_mod3(aug[i][j], mul_mod3(factor, aug[rank][j]));
                 }
-                
-                // Update button press counts
-                vector<int> newButtonPresses = current.buttonPressCount;
-                newButtonPresses[i]++;
-                int newTotalPresses = current.totalPresses + 1;
-                
-                // If this light state hasn't been seen or was seen with more presses
-                if (visited.find(newLights) == visited.end()) {
-                    visited[newLights] = newButtonPresses;
-                    q.push(State(newLights, newButtonPresses, newTotalPresses));
+            }
+        }
+        ++rank;
+    }
+    // Back substitution to get RREF
+    for (int row = rank - 1; row >= 0; --row) {
+        int col = 0;
+        while (col < b && aug[row][col] == 0) ++col;
+        if (col == b) continue; // Inconsistent if b[col] != 0
+        int inv = inv_mod3(aug[row][col]);
+        for (int i = 0; i < row; ++i) {
+            if (aug[i][col] != 0) {
+                int factor = mul_mod3(aug[i][col], inv);
+                for (int j = col; j <= b; ++j) {
+                    aug[i][j] = sub_mod3(aug[i][j], mul_mod3(factor, aug[row][j]));
                 }
             }
         }
     }
-    
-    // If we get here, it's impossible to turn all lights to the target color
-    return {false, vector<int>()};
+    return aug;
 }
 
+// Solve A * x = b over Z_3 with constraints
+pair<bool, vector<int>> solveAllLightsToColor(const string& lights,
+                                             const vector<vector<int>>& buttons,
+                                             const vector<int>& maxPresses,
+                                             char targetColor) {
+    int l = lights.size();
+    int b = buttons.size();
+
+    // Target color value
+    int targetColorVal = (targetColor == 'R') ? 0 : (targetColor == 'G') ? 1 : 2;
+
+    // Initial state
+    vector<int> vs(l);
+    for (int i = 0; i < l; ++i) {
+        vs[i] = (lights[i] == 'R') ? 0 : (lights[i] == 'G') ? 1 : 2;
+    }
+
+    // Target state
+    vector<int> ve(l, targetColorVal);
+
+    // Compute b = ve - vs mod 3
+    vector<int> b(l);
+    for (int j = 0; j < l; ++j) {
+        b[j] = sub_mod3(ve[j], vs[j]);
+    }
+
+    // Build matrix A (l x b), augmented with b
+    vector<vector<int>> A(l, vector<int>(b + 1, 0));
+    for (int i = 0; i < b; ++i) {
+        for (int lightIdx : buttons[i]) {
+            int j = lightIdx - 1; // 0-based index
+            A[j][i] = 1;
+        }
+    }
+    for (int j = 0; j < l; ++j) {
+        A[j][b] = b[j];
+    }
+
+    // Perform Gaussian elimination
+    vector<vector<int>> rref = gaussian_elimination(A, l, b);
+
+    // Check consistency and extract particular solution
+    vector<int> x0(b, 0);
+    vector<int> pivot_cols(l, -1);
+    int rank = 0;
+    for (int i = 0; i < l; ++i) {
+        int col = 0;
+        while (col < b && rref[i][col] == 0) ++col;
+        if (col == b) {
+            if (rref[i][b] != 0) return {false, vector<int>()}; // Inconsistent
+            break;
+        }
+        pivot_cols[i] = col;
+        x0[col] = rref[i][b];
+        ++rank;
+    }
+
+    // Find null space basis
+    vector<vector<int>> null_basis;
+    for (int col = 0; col < b; ++col) {
+        bool is_free = true;
+        for (int i = 0; i < rank; ++i) {
+            if (pivot_cols[i] == col) {
+                is_free = false;
+                break;
+            }
+        }
+        if (is_free) {
+            vector<int> basis_vec(b, 0);
+            basis_vec[col] = 1;
+            for (int i = 0; i < rank; ++i) {
+                int pcol = pivot_cols[i];
+                basis_vec[pcol] = sub_mod3(0, rref[i][col]);
+            }
+            null_basis.push_back(basis_vec);
+        }
+    }
+
+    // Enumerate solutions: x = x0 + sum(y_k * n_k)
+    int k = null_basis.size();
+    vector<int> best_x;
+    int min_presses = -1;
+    vector<int> y(k, 0);
+    while (true) {
+        vector<int> x(b);
+        for (int i = 0; i < b; ++i) {
+            x[i] = x0[i];
+            for (int j = 0; j < k; ++j) {
+                x[i] = add_mod3(x[i], mul_mod3(y[j], null_basis[j][i]));
+            }
+        }
+        // Check constraints
+        bool valid = true;
+        int total = 0;
+        for (int i = 0; i < b; ++i) {
+            if (x[i] > min(maxPresses[i], 2)) {
+                valid = false;
+                break;
+            }
+            total += x[i];
+        }
+        if (valid && (min_presses == -1 || total < min_presses)) {
+            min_presses = total;
+            best_x = x;
+        }
+        // Next combination
+        int pos = 0;
+        while (pos < k && y[pos] == 2) y[pos++] = 0;
+        if (pos == k) break;
+        y[pos]++;
+    }
+
+    if (min_presses != -1) {
+        return {true, best_x};
+    }
+    return {false, vector<int>()};
+}
 // Function to check if a solution is valid
 bool validateSolution(const string& lights, 
                      const vector<vector<int>>& buttons, 
