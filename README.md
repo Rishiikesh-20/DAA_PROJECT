@@ -1,12 +1,35 @@
-# React + Vite
+# Lights Puzzle Solver & Game 🎮💡
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+This repository contains two parts:
 
-Currently, two official plugins are available:
+1. A **C++ implementation** of a linear algebra-based algorithm to solve a "Lights Puzzle" where each light can be Red (R), Green (G), or Blue (B), and multiple buttons can change the colors of multiple lights.
+2. A **React-based web game**, where users can play this puzzle interactively. The backend logic of the game is implemented in **JavaScript**, but the C++ algorithm is included here to demonstrate the formal mathematical model and its design & analysis for academic purposes.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react/README.md) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+---
 
-## Expanding the ESLint configuration
+## 🔍 Problem Overview
 
-If you are developing a production application, we recommend using TypeScript and enable type-aware lint rules. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+You are given:
+- A sequence of lights, each colored R, G, or B.
+- A number of buttons, where each button toggles certain lights and cycles their color: R → G → B → R.
+- A target color to which all lights must be changed.
+- A constraint on how many times each button can be pressed (maximum 0, 1, or 2).
+
+**Goal:** Find the minimum number of button presses (modulo 3 arithmetic) required to convert all lights to the desired color.
+
+---
+
+## 🧠 Algorithm (C++)
+
+The C++ algorithm formulates the puzzle as a system of linear equations over the field **Z₃** (integers modulo 3). It applies:
+
+- Modular arithmetic operations (`add`, `sub`, `mul`, `inv`) over mod 3.
+- **Gaussian elimination** to solve the system.
+- Enumeration over the null space (free variables) to find the optimal valid solution within button constraints.
+
+### Features
+
+- Solves under constraints of button press limits.
+- Efficiently finds a minimal total number of presses.
+- Validates solution correctness after solving.
+
